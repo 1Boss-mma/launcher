@@ -17,8 +17,8 @@ namespace Launcher.Setup;
 
 internal static class Program
 {
-    internal const string Marker = ".launcher-install";
-    internal const string ProductId = "Launcher-9ed546d7";
+    internal const string Marker = CleanInstallation.Marker;
+    internal const string ProductId = CleanInstallation.ProductId;
     internal const string RegistryPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\" + ProductId;
     internal static string Version => Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
 
@@ -76,7 +76,7 @@ internal static class Program
         mutex.ReleaseMutex();
     }
 
-    internal static string Install(string destination, bool desktop, IProgress<string> progress)
+    internal static (string Path, string CleanupSummary) Install(string destination, bool desktop, bool clean, IProgress<string> progress)
     {
         EnsureLauncherClosed();
         var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(destination.Trim()));
@@ -89,12 +89,17 @@ internal static class Program
         }
         var stage = root + ".install-" + Guid.NewGuid().ToString("N");
         var backup = root + ".backup-" + Guid.NewGuid().ToString("N");
+        using var previousKey = Registry.CurrentUser.OpenSubKey(RegistryPath);
+        var previousRoot = previousKey?.GetValue("InstallLocation") as string;
+        using var payload = OpenPayload();
+        var payloadFiles = payload.Entries.Where(entry => entry.Name.Length > 0).Select(entry => entry.FullName).ToArray();
         bool replaced = false;
         try
         {
             progress.Report("Распаковка файлов приложения…");
             Extract(stage);
             File.WriteAllText(Path.Combine(stage, Marker), ProductId);
+            CleanInstallation.WriteManifest(stage, payloadFiles);
             File.Copy(Environment.ProcessPath!, Path.Combine(stage, "Uninstall.exe"));
             progress.Report("Установка приложения…");
             if (Directory.Exists(root)) Directory.Move(root, backup);
@@ -111,7 +116,6 @@ internal static class Program
             key.SetValue("UninstallString", "\"" + Path.Combine(root, "Uninstall.exe") + "\" --uninstall");
             key.SetValue("NoModify", 1);
             key.SetValue("NoRepair", 1);
-            return root;
         }
         catch
         {
@@ -127,8 +131,18 @@ internal static class Program
         {
             if (Directory.Exists(stage)) DeletePayload(stage);
             // A previous installation may contain personal additions: keep its backup.
-            if (Directory.Exists(backup)) progress.Report("Предыдущая установка сохранена: " + backup);
+            if (!clean && Directory.Exists(backup)) progress.Report("Предыдущая установка сохранена: " + backup);
         }
+        var cleanupSummary = "";
+        if (clean)
+        {
+            progress.Report("Удаление старых файлов Launcher…");
+            var defaultRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Launcher");
+            var retained = CleanInstallation.Clean(root, new[] { root, backup, previousRoot, defaultRoot }, payloadFiles);
+            cleanupSummary = retained.Count == 0 ? "Старые файлы Launcher удалены." :
+                "Старые файлы удалены, кроме занятых файлов и папок с личными данными: " + string.Join(", ", retained);
+        }
+        return (root, cleanupSummary);
     }
 
     private static void CreateShortcut(string path, string root)
@@ -190,7 +204,7 @@ internal static class Program
         var root = Path.GetFullPath(directory) + Path.DirectorySeparatorChar;
         using var zip = OpenPayload();
         foreach (var name in zip.Entries.Where(e => e.Name.Length > 0).Select(e => e.FullName)
-                     .Concat(new[] { Marker, "Uninstall.exe", "Launcher.exe.old" }))
+                     .Concat(new[] { Marker, CleanInstallation.Manifest, "Uninstall.exe", "Launcher.exe.old" }))
         {
             var path = Path.GetFullPath(Path.Combine(root, name));
             if (!path.StartsWith(root, StringComparison.OrdinalIgnoreCase)) throw new IOException("Некорректный путь удаления.");
@@ -213,6 +227,7 @@ internal sealed class Wizard : Window
     private readonly Button _cancel = new() { MinWidth = 100, Height = 42, Content = "Отмена" };
     private readonly TextBox _path = new() { Height = 38, VerticalContentAlignment = VerticalAlignment.Center, Padding = new Thickness(10,0,10,0) };
     private readonly CheckBox _desktop = new() { Content = "Создать ярлык на рабочем столе", IsChecked = true, Margin = new Thickness(0,20,0,0) };
+    private readonly CheckBox _clean = new() { Content = "Чистая установка — удалить старые версии Launcher", IsChecked = false, Margin = new Thickness(0,12,0,0) };
     private int _step;
     private bool _installing;
     private string? _installed;
@@ -245,15 +260,20 @@ internal sealed class Wizard : Window
         _path.Background = new SolidColorBrush(Color.FromRgb(27,41,51));
         _path.Foreground = Brushes.White; _path.BorderBrush = new SolidColorBrush(Color.FromRgb(64,81,93));
         _desktop.Foreground = new SolidColorBrush(Color.FromRgb(237,244,245));
+        _clean.Foreground = _desktop.Foreground;
         var brand = new StackPanel(); brand.Children.Add(new TextBlock { Text = "LAUNCHER", FontSize = 24, FontWeight = FontWeights.SemiBold });
         brand.Children.Add(new TextBlock { Text = "Minecraft · версия " + Program.Version, FontSize = 12, Foreground = _description.Foreground, Margin = new Thickness(0,5,0,0) });
         header.Child = brand; grid.Children.Add(header);
-        _body.Children.Add(_heading); _body.Children.Add(_description); Grid.SetRow(_body,1); grid.Children.Add(_body);
+        _body.Children.Add(_heading); _body.Children.Add(_description);
+        var bodyScroll = new ScrollViewer { Content = _body, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+        Grid.SetRow(bodyScroll,1); grid.Children.Add(bodyScroll);
         var footer = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(36,20,36,24) };
         footer.Children.Add(_cancel); footer.Children.Add(_next); Grid.SetRow(footer,2); grid.Children.Add(footer); Content = grid;
         _cancel.Click += (_,_) => Close(); _next.Click += Next;
         Closing += (_,e) => { if (_installing) e.Cancel = true; };
         _path.Text = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Launcher");
+        using (var installedKey = Registry.CurrentUser.OpenSubKey(Program.RegistryPath))
+            if (installedKey?.GetValue("InstallLocation") is string installedPath && File.Exists(Path.Combine(installedPath, Program.Marker))) _path.Text = installedPath;
         _heading.Text = uninstall ? "Удаление приложения" : "Всё готово для вашей игры";
         _description.Text = uninstall ? "Будут удалены только файлы Launcher и его ярлыки. Ваши сборки, миры, моды и настройки останутся на компьютере." : "Мастер установит Launcher на этот компьютер.\n\nВыберите сборку, добавляйте моды и запускайте Minecraft из одного окна. Java и файлы игры загружаются при установке выбранной сборки.\n\nПрава администратора и отдельная установка .NET не требуются.";
         if (uninstall) _next.Content = "Удалить Launcher";
@@ -275,7 +295,9 @@ internal sealed class Wizard : Window
             row.Children.Add(_path);
             var browse = new Button { Content = "Обзор…", Margin = new Thickness(8,0,0,0) }; Grid.SetColumn(browse,1); row.Children.Add(browse);
             browse.Click += (_,_) => { using var dialog = new System.Windows.Forms.FolderBrowserDialog { Description = "Папка установки Launcher", SelectedPath = _path.Text }; if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK) _path.Text = dialog.SelectedPath; };
-            _body.Children.Add(row); _body.Children.Add(_desktop); _next.Content = "Установить"; return;
+            _body.Children.Add(row); _body.Children.Add(_desktop); _body.Children.Add(_clean);
+            _body.Children.Add(new TextBlock { Text = "Сборки, миры и настройки сохраняются.", FontSize = 12, Foreground = _description.Foreground, Margin = new Thickness(24,4,0,0) });
+            _next.Content = "Установить"; return;
         }
         if (_step == 2)
         {
@@ -284,16 +306,18 @@ internal sealed class Wizard : Window
             return;
         }
         _installing = true; _next.IsEnabled = false; _cancel.IsEnabled = false;
-        _path.IsEnabled = false; _desktop.IsEnabled = false;
+        _path.IsEnabled = false; _desktop.IsEnabled = false; _clean.IsEnabled = false;
         var bar = new ProgressBar { IsIndeterminate = true, Height = 5, Margin = new Thickness(0,24,0,0), Foreground = _next.Background }; _body.Children.Add(bar);
         try
         {
-            var path = _path.Text; var desktop = _desktop.IsChecked == true;
-            _installed = await Task.Run(() => Program.Install(path, desktop, new Progress<string>(s => Dispatcher.Invoke(() => _description.Text = s))));
+            var path = _path.Text; var desktop = _desktop.IsChecked == true; var clean = _clean.IsChecked == true;
+            var result = await Task.Run(() => Program.Install(path, desktop, clean, new Progress<string>(s => Dispatcher.Invoke(() => _description.Text = s))));
+            _installed = result.Path;
             _step = 2; _heading.Text = "Launcher установлен"; _description.Text = "Можно начинать.\n\nПри появлении новой версии кнопка скачивания отобразится на главной над настройками.\n\nПапка приложения: " + _installed;
+            if (result.CleanupSummary.Length > 0) _description.Text += "\n\n" + result.CleanupSummary;
             _next.Content = "Запустить Launcher"; _cancel.Content = "Готово";
         }
-        catch (Exception ex) { _heading.Text = "Установка не завершена"; _description.Text = ex.Message; _path.IsEnabled = true; _desktop.IsEnabled = true; }
+        catch (Exception ex) { _heading.Text = "Установка не завершена"; _description.Text = ex.Message; _path.IsEnabled = true; _desktop.IsEnabled = true; _clean.IsEnabled = true; }
         finally { _body.Children.Remove(bar); _installing = false; _next.IsEnabled = true; _cancel.IsEnabled = true; }
     }
 }
