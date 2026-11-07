@@ -233,7 +233,6 @@ public partial class MainWindow : Window
         try
         {
             _config = _store.LoadOrDefault();
-            _config.LauncherUpdateUrl ??= LauncherConfig.DefaultUpdateUrl;
         }
         catch (Exception ex) when (
             ex is IOException or UnauthorizedAccessException or LauncherException or System.Text.Json.JsonException)
@@ -455,7 +454,7 @@ public partial class MainWindow : Window
             _ = UpdateModsCountHintAsync();
             App.StartupTrace("home/dashboard done");
 
-            if (_config.CheckLauncherUpdates && !string.IsNullOrWhiteSpace(_config.LauncherUpdateUrl))
+            if (_config.CheckLauncherUpdates)
             {
                 _ = CheckUpdatesSilentlyAsync();
             }
@@ -6765,7 +6764,6 @@ public partial class MainWindow : Window
         GameDirBox.Text = _instance.GameDir;
         PackUrlBox.Text = _instance.PackUrl;
         BackupRetentionBox.Text = _config.BackupRetention.ToString(CultureInfo.InvariantCulture);
-        LauncherUpdateUrlBox.Text = _config.LauncherUpdateUrl;
         ParticlesToggle.IsChecked = _config.ParticlesEnabled;
         CloseOnLaunchToggle.IsChecked = _config.CloseOnLaunch;
 
@@ -7077,7 +7075,6 @@ public partial class MainWindow : Window
             }
 
             _config.BackupRetention = Math.Clamp(retention, 1, 50);
-            _config.LauncherUpdateUrl = LauncherUpdateUrlBox.Text.Trim();
             _config.Theme = ThemeNight.IsChecked == true
                 ? "night"
                 : ThemeDay.IsChecked == true
@@ -7113,16 +7110,9 @@ public partial class MainWindow : Window
 
     private void CheckLauncherUpdate_Click(object sender, RoutedEventArgs e)
     {
-        var url = LauncherUpdateUrlBox.Text.Trim();
-        if (string.IsNullOrWhiteSpace(url))
+        _ = RunBusyAsync("ПРОВЕРКА ОБНОВЛЕНИЯ", "Поиск новой версии...", async ct =>
         {
-            ShowError("Обновление лаунчера", "Укажи URL latest.json.");
-            return;
-        }
-
-        _ = RunBusyAsync("ПРОВЕРКА ОБНОВЛЕНИЯ", "Запрос latest.json...", async ct =>
-        {
-            var info = await _updates.CheckAsync(url, AppVersion, ct);
+            var info = await _updates.CheckAsync(AppVersion, ct);
             _pendingUpdate = info;
             UpdateHomeUpdateButton();
 
@@ -7164,17 +7154,11 @@ public partial class MainWindow : Window
 
     private async Task CheckUpdatesSilentlyAsync()
     {
-        var url = _config.LauncherUpdateUrl;
-        if (string.IsNullOrWhiteSpace(url))
-        {
-            return;
-        }
-
         try
         {
             await Task.Delay(1600);
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-            var info = await _updates.CheckAsync(url, AppVersion, timeout.Token);
+            var info = await _updates.CheckAsync(AppVersion, timeout.Token);
             _pendingUpdate = info;
             if (info is null)
             {
@@ -7205,9 +7189,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        LauncherUpdateStatus.Text = string.IsNullOrWhiteSpace(_config.LauncherUpdateUrl)
-            ? "URL не задан. Автообновление выключено."
-            : "Проверка не выполнялась.";
+        LauncherUpdateStatus.Text = "Проверка не выполнялась.";
         InstallUpdateButton.IsEnabled = false;
     }
 

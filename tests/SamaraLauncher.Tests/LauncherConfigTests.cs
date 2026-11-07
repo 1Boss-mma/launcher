@@ -1,10 +1,23 @@
 using SamaraLauncher.Core.Models;
+using System.Text.Json;
 using Xunit;
 
 namespace SamaraLauncher.Tests;
 
 public sealed class LauncherConfigTests
 {
+    [Theory]
+    [InlineData("http://old-test-server:8080/launcher/latest.json")]
+    [InlineData("")]
+    public void LegacyUpdateUrl_IsIgnoredAndNotSaved(string legacyUrl)
+    {
+        var json = JsonSerializer.Serialize(new { LauncherUpdateUrl = legacyUrl, CheckLauncherUpdates = true });
+        var config = JsonSerializer.Deserialize<LauncherConfig>(json)!;
+
+        Assert.True(config.CheckLauncherUpdates);
+        Assert.DoesNotContain("LauncherUpdateUrl", JsonSerializer.Serialize(config));
+    }
+
     [Fact]
     public void Find_IsCaseInsensitive()
     {

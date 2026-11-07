@@ -11,13 +11,6 @@ public sealed class LauncherConfig
 
     public string? LastInstanceId { get; set; }
 
-    /// <summary>
-    /// latest.json для автообновления лаунчера. Пусто — обновления выключены.
-    /// </summary>
-    public const string DefaultUpdateUrl = "https://github.com/1Boss-mma/launcher/releases/latest/download/latest.json";
-
-    public string? LauncherUpdateUrl { get; set; } = DefaultUpdateUrl;
-
     public bool CheckLauncherUpdates { get; set; } = true;
 
     /// <summary>Сколько последних бэкапов mods/config хранить.</summary>

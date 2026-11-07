@@ -14,6 +14,27 @@ public sealed class LauncherUpdateSecurityTests
     private const string ValidSha256 =
         "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
+    [Fact]
+    public async Task CheckAsync_DefaultSourceIsGithubReleases()
+    {
+        using var temp = new TempDirectory();
+        var handler = new StubHttpHandler(request =>
+        {
+            Assert.Equal(
+                "https://github.com/1Boss-mma/launcher/releases/latest/download/latest.json",
+                request.RequestUri!.AbsoluteUri);
+            return JsonResponse(ManifestJson("0.3.2", "https://github.com/1Boss-mma/launcher/releases/download/v0.3.2/Launcher-0.3.2.exe", ValidSha256));
+        });
+        using var client = new HttpClient(handler);
+        var service = new LauncherUpdateService(new LauncherPaths(localDataDir: temp.Root), client);
+
+        var update = await service.CheckAsync("0.3.1", CancellationToken.None);
+
+        Assert.NotNull(update);
+        Assert.Equal("0.3.2", update.Version);
+        Assert.Equal(1, handler.RequestCount);
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

@@ -2958,11 +2958,6 @@
                                             <TextBlock Text="ОБНОВЛЕНИЕ ЛАУНЧЕРА"
                                                        Style="{StaticResource Caps}"
                                                        Foreground="{DynamicResource TextBrush}"/>
-                                            <TextBlock Text="URL LATEST.JSON"
-                                                       Style="{StaticResource Caps}" FontSize="9"
-                                                       Margin="0,8,0,3"/>
-                                            <TextBox x:Name="LauncherUpdateUrlBox"
-                                                     Style="{StaticResource PixelTextBox}"/>
                                             <TextBlock x:Name="LauncherUpdateStatus"
                                                        Text="Проверка не выполнялась."
                                                        Style="{StaticResource MutedText}"

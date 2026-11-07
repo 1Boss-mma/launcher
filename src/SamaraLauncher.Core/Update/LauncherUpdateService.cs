@@ -16,6 +16,11 @@ namespace SamaraLauncher.Core.Update;
 /// </summary>
 public sealed class LauncherUpdateService
 {
+    public const string ManifestUrl = "https://github.com/1Boss-mma/launcher/releases/latest/download/latest.json";
+
+    public Task<LauncherUpdateInfo?> CheckAsync(string currentVersion, CancellationToken ct) =>
+        CheckAsync(ManifestUrl, currentVersion, ct);
+
     private static readonly HttpClient SharedHttpClient = new(new HttpClientHandler
     {
         AutomaticDecompression = DecompressionMethods.All
