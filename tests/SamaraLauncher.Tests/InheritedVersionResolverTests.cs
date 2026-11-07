@@ -70,6 +70,8 @@ public sealed class InheritedVersionResolverTests
             new[]
             {
                 "org.example:parent:1.0",
+                // Distinct full Maven coordinates remain separate libraries.
+                "org.example:shared:1.0",
                 "org.example:child:1.0",
                 "org.example:shared:2.0"
             },
@@ -82,6 +84,27 @@ public sealed class InheritedVersionResolverTests
         Assert.Equal(
             new[] { "--parent", "--child" },
             resolved.Metadata.GameArguments.SelectMany(argument => argument.Values));
+    }
+
+    [Fact]
+    public void Load_ChildOverridesIdenticalLibraryCoordinates()
+    {
+        using var temp = new TempDirectory();
+        WriteVersion(temp.Root, "parent", """
+            { "id": "parent", "libraries": [
+              { "name": "org.example:shared:1.0", "url": "https://parent.example/" }
+            ] }
+            """);
+        WriteVersion(temp.Root, "child", """
+            { "id": "child", "inheritsFrom": "parent", "libraries": [
+              { "name": "org.example:shared:1.0", "url": "https://child.example/" }
+            ] }
+            """);
+
+        var resolved = InheritedVersionResolver.Load(temp.Root, "child");
+
+        var library = Assert.Single(resolved.Metadata.Libraries);
+        Assert.Equal("https://child.example/", library.Url);
     }
 
     [Fact]

@@ -249,7 +249,8 @@ public sealed class ModUpdateServiceTests
             FileName = "testmod.jar",
             LatestVersion = "1.1.0",
             DownloadUrl = "https://cdn.test/testmod-1.1.0.jar",
-            Sha512 = ComputeSha512(payload)
+            Sha512 = ComputeSha512(payload),
+            OriginalSha512 = ComputeSha512(await File.ReadAllBytesAsync(targetPath))
         };
 
         var path = await service.DownloadAsync(update, modsDir);
@@ -308,6 +309,7 @@ public sealed class ModUpdateServiceTests
         project_id = "proj-test",
         name = "Test " + versionNumber,
         version_number = versionNumber,
+        version_type = "release",
         date_published = "2026-01-01T00:00:00+00:00",
         changelog = "Changes in " + versionNumber,
         game_versions = new[] { gameVersion },
