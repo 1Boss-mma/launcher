@@ -6,6 +6,12 @@ on:
     tags: ['v*']
   pull_request:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish release after a successful build
+        type: boolean
+        required: true
+        default: false
 
 permissions:
   contents: read
@@ -54,7 +60,13 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $version = $env:RELEASE_VERSION
-          $files = @("Launcher-Setup-$version-win-x64.exe", "Launcher-$version.exe", "Launcher-$version-win-x64.zip", 'latest.json')
+          $notesPath = "docs/release-notes/$version.md"
+          if (Test-Path -LiteralPath $notesPath) {
+            Copy-Item -LiteralPath $notesPath -Destination artifacts/RELEASE-NOTES.md
+          } else {
+            "Для установки скачайте Launcher-Setup-$version-win-x64.exe и запустите его." | Set-Content artifacts/RELEASE-NOTES.md -Encoding utf8NoBOM
+          }
+          $files = @("Launcher-Setup-$version-win-x64.exe", "Launcher-$version.exe", "Launcher-$version-win-x64.zip", 'latest.json', 'RELEASE-NOTES.md')
           foreach ($name in $files) {
             $file = Get-Item -LiteralPath "artifacts/$name"
             if ($file.Length -eq 0) { throw "Empty release file: $name" }
@@ -74,6 +86,7 @@ jobs:
             artifacts/Launcher-*-win-x64.zip
             artifacts/latest.json
             artifacts/SHA256SUMS.txt
+            artifacts/RELEASE-NOTES.md
           if-no-files-found: error
           retention-days: 14
       - name: Save test results
@@ -85,7 +98,7 @@ jobs:
           if-no-files-found: ignore
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push'
+    if: (startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push') || (github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main')
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -106,6 +119,11 @@ jobs:
           set -euo pipefail
           cd release-files
           sha256sum --check SHA256SUMS.txt
-          printf 'Для установки скачайте **Launcher-Setup-%s-win-x64.exe** и запустите его.\n\nЕсли лаунчер уже установлен, проверьте обновления в приложении.\n' "$RELEASE_VERSION" > "$RUNNER_TEMP/release-notes.md"
-          gh release create "$GITHUB_REF_NAME" --verify-tag --draft --title "Launcher $RELEASE_VERSION" --notes-file "$RUNNER_TEMP/release-notes.md" ./*
-          gh release edit "$GITHUB_REF_NAME" --draft=false --latest
+          release_tag="v$RELEASE_VERSION"
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            tag_args=(--verify-tag)
+          else
+            tag_args=(--target "$GITHUB_SHA")
+          fi
+          gh release create "$release_tag" "${tag_args[@]}" --draft --title "Launcher $RELEASE_VERSION" --notes-file RELEASE-NOTES.md ./*
+          gh release edit "$release_tag" --draft=false --latest
