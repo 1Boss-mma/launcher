@@ -78,16 +78,18 @@ public partial class MainWindow
         pages.Margin = new Thickness(24, 16, 24, 24);
         pages.Children.Add(_workspace);
         // Move settings groups intact, retaining controls and validation handlers.
-        var columns = (Grid)SettingsView.Children[1];
-        var left = (StackPanel)columns.Children[0];
-        var right = (StackPanel)columns.Children[1];
-        var cards = left.Children.Cast<FrameworkElement>().Concat(right.Children.Cast<FrameworkElement>()).ToArray();
-        foreach (var pair in new[] { ("profile",0), ("instance",1), ("pack",2), ("backups",3), ("updates",4), ("appearance",5), ("about",6) })
+        foreach (var pair in new (string Key, FrameworkElement Card)[]
         {
-            var card = cards[pair.Item2];
+            ("profile", ProfileSettingsCard), ("instance", InstanceSettingsCard),
+            ("pack", PackUpdatesSettingsCard), ("backups", BackupsSettingsCard),
+            ("updates", LauncherUpdatesSettingsCard), ("appearance", AppearanceSettingsCard),
+            ("about", AboutSettingsCard)
+        })
+        {
+            var card = pair.Card;
             ((Panel)card.Parent).Children.Remove(card);
             card.Margin = new Thickness(0, 0, 0, 12);
-            _settingsCards[pair.Item1] = card;
+            _settingsCards[pair.Key] = card;
         }
         // Existing inline catalog selectors are retained as context-aware operation controls.
         ((FrameworkElement)CatalogTab.Parent).Visibility = Visibility.Collapsed;
