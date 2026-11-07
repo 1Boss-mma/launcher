@@ -1,0 +1,31 @@
+name: Import source
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Import source snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import pathlib, zipfile
+          root = pathlib.Path.cwd().resolve()
+          with zipfile.ZipFile('bootstrap-source.zip') as archive:
+              for info in archive.infolist():
+                  target = (root / info.filename).resolve()
+                  if not target.is_relative_to(root) or '.git' in pathlib.PurePosixPath(info.filename).parts:
+                      raise ValueError('Unsafe archive path')
+              archive.extractall(root)
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src tests tools docs scripts Directory.Build.props global.json Launcher.sln publish.ps1 build.ps1 test.ps1 version.ps1 .gitignore LICENSE
+          git rm bootstrap-source.zip
+          git commit -m 'Import launcher source for automated Windows builds'
+          git push
