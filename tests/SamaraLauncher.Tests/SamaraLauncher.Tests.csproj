@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\SamaraLauncher.Core\SamaraLauncher.Core.csproj" />
+    <Compile Include="..\..\src\Launcher.Setup\CleanInstallation.cs" Link="Setup\CleanInstallation.cs" />
   </ItemGroup>
 
 </Project>
