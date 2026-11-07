@@ -1,0 +1,111 @@
+name: Build and release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Check version
+        id: version
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $props = [xml](Get-Content Directory.Build.props -Raw)
+          $version = [string]$props.Project.PropertyGroup.Version
+          if ($version -notmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$') { throw 'Invalid release version' }
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$version") { throw 'Tag and Directory.Build.props versions differ' }
+          "version=$version" >> $env:GITHUB_OUTPUT
+      - name: Test
+        shell: pwsh
+        run: |
+          ./test.ps1 --logger trx --results-directory artifacts/test-results
+          if ($LASTEXITCODE -ne 0) { throw 'Tests failed' }
+      - name: Build installer and update package
+        shell: pwsh
+        run: |
+          ./scripts/Build-Installer.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Packaging failed' }
+      - name: Verify release files
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = $env:RELEASE_VERSION
+          $files = @("Launcher-Setup-$version-win-x64.exe", "Launcher-$version.exe", "Launcher-$version-win-x64.zip", 'latest.json')
+          foreach ($name in $files) {
+            $file = Get-Item -LiteralPath "artifacts/$name"
+            if ($file.Length -eq 0) { throw "Empty release file: $name" }
+          }
+          $manifest = Get-Content artifacts/latest.json -Raw | ConvertFrom-Json
+          $hash = (Get-FileHash "artifacts/Launcher-$version.exe" -Algorithm SHA256).Hash.ToLowerInvariant()
+          $expectedUrl = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/v$version/Launcher-$version.exe"
+          if ($manifest.version -ne $version -or $manifest.sha256 -ne $hash -or $manifest.url -ne $expectedUrl) { throw 'Invalid update manifest' }
+          $checksums = foreach ($name in $files) { '{0}  {1}' -f (Get-FileHash "artifacts/$name" -Algorithm SHA256).Hash.ToLowerInvariant(), $name }
+          $checksums | Set-Content artifacts/SHA256SUMS.txt -Encoding utf8NoBOM
+      - uses: actions/upload-artifact@v4
+        with:
+          name: launcher-${{ steps.version.outputs.version }}-win-x64
+          path: |
+            artifacts/Launcher-Setup-*-win-x64.exe
+            artifacts/Launcher-*.exe
+            artifacts/Launcher-*-win-x64.zip
+            artifacts/latest.json
+            artifacts/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
+      - name: Save test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: artifacts/test-results/*.trx
+          if-no-files-found: ignore
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: launcher-${{ needs.build.outputs.version }}-win-x64
+          path: release-files
+      - name: Publish complete release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          set -euo pipefail
+          cd release-files
+          sha256sum --check SHA256SUMS.txt
+          printf 'Для установки скачайте **Launcher-Setup-%s-win-x64.exe** и запустите его.\n\nЕсли лаунчер уже установлен, проверьте обновления в приложении.\n' "$RELEASE_VERSION" > "$RUNNER_TEMP/release-notes.md"
+          gh release create "$GITHUB_REF_NAME" --verify-tag --draft --title "Launcher $RELEASE_VERSION" --notes-file "$RUNNER_TEMP/release-notes.md" ./*
+          gh release edit "$GITHUB_REF_NAME" --draft=false --latest
