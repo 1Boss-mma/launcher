@@ -1,0 +1,53 @@
+# build outputs
+bin/
+obj/
+publish/
+TestResults/
+artifacts/
+dist/
+output/
+.codex/
+.release-staging/
+
+# IDE / user
+.vs/
+.idea/
+*.user
+*.suo
+
+# local secrets / machine config
+.env
+.env.*
+distribution.json
+distribution.local.json
+secrets.json
+*.pfx
+*.p12
+*.snk
+*.jks
+*.keystore
+
+# local logs / temp / archives
+*.log
+*.tmp
+*.bak
+*.pid
+*.zip
+*.7z
+*.rar
+# machine-specific settings and player data
+config.json
+config.*.json
+instances/
+worlds/
+saves/
+logs/
+cache/
+backups/
+updates/
+.agents/
+
+# release binaries belong in GitHub Releases
+*.exe
+*.dll
+*.pdb

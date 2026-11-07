@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>Launcher.Setup</AssemblyName>
+    <ApplicationIcon>..\SamaraLauncher.App\Assets\Samara.ico</ApplicationIcon>
+    <ApplicationManifest>..\SamaraLauncher.App\app.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\SamaraLauncher.App\Assets\NightValley-clean-v1.png" LogicalName="Launcher.Setup.Scene.png" />
+    <EmbeddedResource Include="$(PayloadPath)" LogicalName="Launcher.Payload.zip" Condition="Exists('$(PayloadPath)')" />
+  </ItemGroup>
+  <Target Name="RequirePayload" BeforeTargets="PrepareForBuild" Condition="!Exists('$(PayloadPath)')">
+    <Error Text="Build using scripts/Build-Installer.ps1: PayloadPath is required." />
+  </Target>
+</Project>

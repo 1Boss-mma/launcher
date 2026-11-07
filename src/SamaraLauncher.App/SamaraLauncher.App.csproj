@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>SamaraLauncher.App</RootNamespace>
+    <AssemblyName>Launcher</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\Samara.ico</ApplicationIcon>
+    <StartupObject>SamaraLauncher.App.App</StartupObject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\NightValley-clean-v1.png" />
+    <Resource Include="Assets\ReferenceCloud-v1.png" />
+    <Resource Include="Assets\ReferenceClouds-atlas-v1.png" />
+    <ProjectReference Include="..\SamaraLauncher.Core\SamaraLauncher.Core.csproj" />
+
+
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\..\tools\packwiz-installer-bootstrap.jar" Link="tools\packwiz-installer-bootstrap.jar" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="..\..\docs\README-DISTRIBUTION.txt" Link="README.txt" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="..\..\LICENSE" Link="LICENSE.txt" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <Target Name="CopyLauncherToolsToPublish" AfterTargets="Publish">
+    <ItemGroup>
+      <LauncherToolFiles Include="$(MSBuildProjectDirectory)\..\..\tools\packwiz-installer-bootstrap.jar" />
+    </ItemGroup>
+    <Copy SourceFiles="@(LauncherToolFiles)"
+          DestinationFiles="@(LauncherToolFiles->'$(PublishDir)tools\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>
+
+
+
